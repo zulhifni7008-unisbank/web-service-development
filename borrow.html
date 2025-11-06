@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Data Peminjaman - Perpustakaan Digital</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    body { background-color: #f8f9fa; }
+    .navbar { border-bottom: 3px solid #0d6efd; }
+    .book-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .book-item select, .book-item input { flex: 1; }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary px-3">
+    <a class="navbar-brand" href="dashboard.html">📚 Perpustakaan Digital</a>
+    <div class="ms-auto d-flex align-items-center">
+      <span id="user-name" class="text-white me-3"></span>
+      <a href="dashboard.html" class="btn btn-light btn-sm me-2">Dashboard</a>
+      <button class="btn btn-danger btn-sm" id="logoutBtn">Logout</button>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="d-flex align-items-center gap-2">
+        <a href="dashboard.html" class="btn btn-outline-secondary">⬅️ Kembali</a>
+        <h3 class="m-0">📦 Data Transaksi Peminjaman</h3>
+      </div>
+      <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#borrowModal" id="btnAdd">+ Tambah Transaksi</button>
+    </div>
+
+    <!-- Tabel -->
+    <table class="table table-bordered table-striped align-middle">
+      <thead class="table-dark text-center">
+        <tr>
+          <th>ID</th>
+          <th>Anggota</th>
+          <th>Tanggal Pinjam</th>
+          <th>Tanggal Kembali</th>
+          <th>Daftar Buku</th>
+          <th>Status</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="borrow-table"></tbody>
+    </table>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal fade" id="borrowModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title">Tambah Transaksi</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="borrowForm">
+            <input type="hidden" id="transactionId">
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label>Anggota</label>
+                <select id="member_id" class="form-select" required></select>
+              </div>
+              <div class="col-md-3 mb-3">
+                <label>Tanggal Pinjam</label>
+                <input type="date" id="borrow_date" class="form-control" required>
+              </div>
+              <div class="col-md-3 mb-3">
+                <label>Tanggal Kembali</label>
+                <input type="date" id="return_date" class="form-control">
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label>Status</label>
+              <select id="status" class="form-select">
+                <option value="dipinjam">Dipinjam</option>
+                <option value="dikembalikan">Dikembalikan</option>
+                <option value="terlambat">Terlambat</option>
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label>Buku yang Dipinjam</label>
+              <div id="book-list"></div>
+              <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="addBookBtn">+ Tambah Buku</button>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+          <button class="btn btn-primary" id="saveBorrowBtn">Simpan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 🔐 Login check
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (!user) window.location.href = 'index.html';
+    document.getElementById('user-name').textContent = user.fullname + ' (' + user.role + ')';
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('user');
+      window.location.href = 'index.html';
+    });
+
+    const API_URL = 'http://localhost/perpustakaan/api.php/records';
+    const table = document.getElementById('borrow-table');
+    const modal = new bootstrap.Modal(document.getElementById('borrowModal'));
+    const form = document.getElementById('borrowForm');
+    const saveBtn = document.getElementById('saveBorrowBtn');
+    const bookList = document.getElementById('book-list');
+
+    let members = [];
+    let books = [];
+
+    // 🔹 Load members
+    async function loadMembers() {
+      const res = await fetch(`${API_URL}/members`);
+      const data = await res.json();
+      members = data.records;
+      const select = document.getElementById('member_id');
+      select.innerHTML = '';
+      members.forEach(m => {
+        select.innerHTML += `<option value="${m.id}">${m.member_code} - ${m.address}</option>`;
+      });
+    }
+
+    // 🔹 Load books
+    async function loadBooks() {
+      const res = await fetch(`${API_URL}/books`);
+      const data = await res.json();
+      books = data.records;
+    }
+
+    // 🧱 Tambah field buku dinamis
+    function addBookItem(bookId = '', qty = 1) {
+      const div = document.createElement('div');
+      div.classList.add('book-item');
+      div.innerHTML = `
+        <select class="form-select book-select" required>
+          <option value="">-- Pilih Buku --</option>
+          ${books.map(b => `<option value="${b.id}" ${b.id == bookId ? 'selected' : ''}>${b.title}</option>`).join('')}
+        </select>
+        <input type="number" class="form-control qty-input" min="1" value="${qty}">
+        <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">🗑</button>
+      `;
+      bookList.appendChild(div);
+    }
+
+    document.getElementById('addBookBtn').addEventListener('click', () => addBookItem());
+
+    // 📥 Load all transactions
+    async function loadTransactions() {
+      table.innerHTML = '';
+      const res = await fetch(`${API_URL}/borrow_transactions`);
+      const transactions = (await res.json()).records;
+
+      for (let t of transactions) {
+        const dRes = await fetch(`${API_URL}/borrow_details?filter=transaction_id,eq,${t.id}`);
+        const dData = await dRes.json();
+        const details = dData.records.map(d => {
+          const book = books.find(b => b.id == d.book_id);
+          return book ? `${book.title} (${d.quantity})` : `ID ${d.book_id}`;
+        });
+
+        const member = members.find(m => m.id == t.member_id);
+        const memberName = member ? member.member_code : '-';
+
+        const statusBadge = t.status === 'dipinjam' ? 'bg-primary' :
+                            t.status === 'dikembalikan' ? 'bg-success' : 'bg-danger';
+
+        table.innerHTML += `
+          <tr>
+            <td>${t.id}</td>
+            <td>${memberName}</td>
+            <td>${t.borrow_date}</td>
+            <td>${t.return_date || '-'}</td>
+            <td>${details.join('<br>')}</td>
+            <td><span class="badge ${statusBadge}">${t.status}</span></td>
+            <td class="text-center">
+              <button class="btn btn-warning btn-sm me-1" onclick="editTransaction(${t.id})">Edit</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteTransaction(${t.id})">Hapus</button>
+            </td>
+          </tr>`;
+      }
+    }
+
+    // ➕ Tambah transaksi
+    document.getElementById('btnAdd').addEventListener('click', () => {
+      document.querySelector('.modal-title').textContent = 'Tambah Transaksi';
+      form.reset();
+      bookList.innerHTML = '';
+      addBookItem();
+      document.getElementById('transactionId').value = '';
+      document.getElementById('borrow_date').valueAsDate = new Date();
+      document.getElementById('status').value = 'dipinjam';
+    });
+
+    // 💾 Simpan transaksi
+    saveBtn.addEventListener('click', async () => {
+      const id = document.getElementById('transactionId').value;
+
+      const payload = {
+        member_id: parseInt(form.member_id.value),
+        borrow_date: form.borrow_date.value,
+        return_date: form.return_date.value,
+        status: form.status.value
+      };
+
+      let transId = id;
+
+      if (id) {
+        await fetch(`${API_URL}/borrow_transactions/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        await fetch(`${API_URL}/borrow_details?filter=transaction_id,eq,${id}`, { method: 'DELETE' });
+      } else {
+        const res = await fetch(`${API_URL}/borrow_transactions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const newTrans = await res.json();
+        transId = newTrans.id;
+      }
+
+      // Simpan detail buku
+      const bookItems = document.querySelectorAll('.book-item');
+      for (const item of bookItems) {
+        const bookId = parseInt(item.querySelector('.book-select').value);
+        const qty = parseInt(item.querySelector('.qty-input').value);
+        await fetch(`${API_URL}/borrow_details`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transaction_id: transId, book_id: bookId, quantity: qty })
+        });
+      }
+
+      modal.hide();
+      loadTransactions();
+    });
+
+    // ✏️ Edit transaksi
+    async function editTransaction(id) {
+      const res = await fetch(`${API_URL}/borrow_transactions/${id}`);
+      const t = await res.json();
+
+      document.getElementById('transactionId').value = t.id;
+      document.getElementById('member_id').value = t.member_id;
+      document.getElementById('borrow_date').value = t.borrow_date;
+      document.getElementById('return_date').value = t.return_date;
+      document.getElementById('status').value = t.status;
+
+      const dRes = await fetch(`${API_URL}/borrow_details?filter=transaction_id,eq,${id}`);
+      const dData = await dRes.json();
+      bookList.innerHTML = '';
+      dData.records.forEach(d => addBookItem(d.book_id, d.quantity));
+
+      document.querySelector('.modal-title').textContent = 'Edit Transaksi';
+      modal.show();
+    }
+
+    // ❌ Hapus transaksi
+    async function deleteTransaction(id) {
+      if (confirm('Yakin ingin menghapus transaksi ini?')) {
+        await fetch(`${API_URL}/borrow_details?filter=transaction_id,eq,${id}`, { method: 'DELETE' });
+        await fetch(`${API_URL}/borrow_transactions/${id}`, { method: 'DELETE' });
+        loadTransactions();
+      }
+    }
+
+    // 🚀 Init
+    (async () => {
+      await loadMembers();
+      await loadBooks();
+      await loadTransactions();
+    })();
+  </script>
+</body>
+</html>

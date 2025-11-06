@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard - Perpustakaan Digital</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    body { background-color: #f5f6fa; }
+    .card {
+      border-radius: 15px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      transition: all 0.2s ease;
+    }
+    .card:hover { transform: translateY(-4px); }
+    .navbar { border-bottom: 3px solid #0d6efd; }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary px-3">
+    <a class="navbar-brand" href="dashboard.html">📚 Perpustakaan Digital</a>
+    <div class="ms-auto d-flex align-items-center">
+      <span id="user-name" class="text-white me-3"></span>
+      <button class="btn btn-light btn-sm" id="logoutBtn">Logout</button>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <div class="container mt-4">
+    <div class="row g-3">
+      <div class="col-md-3">
+        <a href="books.html" class="text-decoration-none">
+            <div class="card text-center text-white bg-primary" style="cursor:pointer;">
+            <div class="card-body">
+                <h5 class="card-title text-white">Total Buku</h5>
+                <h2 id="total-books" class="text-white">0</h2>
+            </div>
+            </div>
+        </a>
+      </div>
+      <div class="col-md-3">
+        <a href="members.html" class="text-decoration-none">
+            <div class="card text-center text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">Total Anggota</h5>
+                <h2 id="total-members">0</h2>
+            </div>
+            </div>
+        </a>
+      </div>
+      <div class="col-md-3">
+        <a href="borrow.html" class="text-decoration-none">
+            <div class="card text-center text-white bg-warning">
+            <div class="card-body">
+                <h5 class="card-title">Peminjaman Aktif</h5>
+                <h2 id="total-borrows">0</h2>
+            </div>
+            </div>
+        </a>
+      </div>
+      <div class="col-md-3">
+        <a href="returns.html" class="text-decoration-none">
+            <div class="card text-center text-white bg-danger">
+            <div class="card-body">
+                <h5 class="card-title">Total Denda</h5>
+                <h2 id="total-fines">Rp 0</h2>
+            </div>
+            </div>
+        </a>
+      </div>
+      <div class="col-md-3">
+        <a href="reports.html" class="text-decoration-none">
+            <div class="card text-center text-white bg-info">
+                <div class="card-body">
+                    <h5 class="card-title">Laporan</h5>
+                    <h2><i class="bi bi-bar-chart"></i></h2>
+                </div>
+            </div>
+        </a>
+        </div>
+    </div>
+
+    <div class="mt-5">
+      <h4>📖 Daftar Buku Terbaru</h4>
+      <table class="table table-striped mt-3">
+        <thead class="table-dark">
+          <tr>
+            <th>#</th>
+            <th>Judul Buku</th>
+            <th>Kategori</th>
+            <th>Stok</th>
+          </tr>
+        </thead>
+        <tbody id="book-list"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (!user) window.location.href = 'index.html';
+    document.getElementById('user-name').textContent = user.fullname + ' (' + user.role + ')';
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('user');
+      window.location.href = 'index.html';
+    });
+
+    async function loadDashboard() {
+      const [books, members, borrows, fines] = await Promise.all([
+        fetch('http://localhost/perpustakaan/api.php/records/books').then(r => r.json()),
+        fetch('http://localhost/perpustakaan/api.php/records/members').then(r => r.json()),
+        fetch('http://localhost/perpustakaan/api.php/records/borrow_transactions?filter=status,eq,dipinjam').then(r => r.json()),
+        fetch('http://localhost/perpustakaan/api.php/records/penalties').then(r => r.json())
+      ]);
+
+      document.getElementById('total-books').textContent = books.records.length;
+      document.getElementById('total-members').textContent = members.records.length;
+      document.getElementById('total-borrows').textContent = borrows.records.length;
+
+      const totalFine = fines.records.reduce((sum, f) => sum + parseFloat(f.fine_amount), 0);
+      document.getElementById('total-fines').textContent = 'Rp ' + totalFine.toLocaleString('id-ID');
+
+      const tbody = document.getElementById('book-list');
+      books.records.slice(0, 5).forEach((b, i) => {
+        tbody.innerHTML += `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${b.title}</td>
+            <td>${b.category_id}</td>
+            <td>${b.stock}</td>
+          </tr>`;
+      });
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

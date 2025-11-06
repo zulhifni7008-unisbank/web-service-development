@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Data Buku - Perpustakaan Digital</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    body { background-color: #f8f9fa; }
+    .navbar { border-bottom: 3px solid #0d6efd; }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary px-3">
+    <a class="navbar-brand" href="dashboard.html">📚 Perpustakaan Digital</a>
+    <div class="ms-auto d-flex align-items-center">
+      <span id="user-name" class="text-white me-3"></span>
+      <a href="dashboard.html" class="btn btn-light btn-sm me-2">Dashboard</a>
+      <button class="btn btn-danger btn-sm" id="logoutBtn">Logout</button>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex align-items-center gap-2">
+            <a href="dashboard.html" class="btn btn-outline-secondary">
+            Kembali
+            </a>
+            <h3 class="m-0">📖 Data Buku</h3>
+        </div>
+        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#bookModal" id="btnAdd">+ Tambah Buku</button>
+    </div>
+
+    <table class="table table-bordered table-striped align-middle">
+      <thead class="table-dark text-center">
+        <tr>
+          <th>ID</th>
+          <th>Judul Buku</th>
+          <th>Kategori</th>
+          <th>Penulis</th>
+          <th>Penerbit</th>
+          <th>Tahun</th>
+          <th>Stok</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="book-table"></tbody>
+    </table>
+  </div>
+
+  <!-- Modal Tambah/Edit -->
+  <div class="modal fade" id="bookModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title">Tambah Buku</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="bookForm">
+            <input type="hidden" id="bookId">
+            <div class="mb-3">
+              <label>Judul Buku</label>
+              <input type="text" id="title" class="form-control" required>
+            </div>
+            <div class="mb-3">
+              <label>Kategori</label>
+              <select id="category_id" class="form-select" required></select>
+            </div>
+            <div class="mb-3">
+              <label>Penulis</label>
+              <select id="author_id" class="form-select" required></select>
+            </div>
+            <div class="mb-3">
+              <label>Penerbit</label>
+              <select id="publisher_id" class="form-select" required></select>
+            </div>
+            <div class="mb-3">
+              <label>Tahun Terbit</label>
+              <input type="number" id="year_published" class="form-control" required>
+            </div>
+            <div class="mb-3">
+              <label>Stok</label>
+              <input type="number" id="stock" class="form-control" required>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+          <button class="btn btn-primary" id="saveBookBtn">Simpan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Autentikasi sederhana
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (!user) window.location.href = 'index.html';
+    document.getElementById('user-name').textContent = user.fullname + ' (' + user.role + ')';
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('user');
+      window.location.href = 'index.html';
+    });
+
+    const API_URL = 'http://localhost/perpustakaan/api.php/records';
+    const table = document.getElementById('book-table');
+    const modal = new bootstrap.Modal(document.getElementById('bookModal'));
+    const form = document.getElementById('bookForm');
+    const saveBtn = document.getElementById('saveBookBtn');
+
+    let categories = [];
+    let authors = [];
+    let publishers = [];
+
+    // Load dropdown data (kategori, penulis, penerbit)
+    async function loadDropdowns() {
+      const [catRes, authRes, pubRes] = await Promise.all([
+        fetch(`${API_URL}/book_categories`).then(r => r.json()),
+        fetch(`${API_URL}/book_authors`).then(r => r.json()),
+        fetch(`${API_URL}/book_publishers`).then(r => r.json())
+      ]);
+
+      categories = catRes.records;
+      authors = authRes.records;
+      publishers = pubRes.records;
+
+      fillSelect('category_id', categories, 'id', 'category_name');
+      fillSelect('author_id', authors, 'id', 'author_name');
+      fillSelect('publisher_id', publishers, 'id', 'publisher_name');
+    }
+
+    function fillSelect(id, data, valField, textField) {
+      const select = document.getElementById(id);
+      select.innerHTML = '';
+      data.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d[valField];
+        opt.textContent = d[textField];
+        select.appendChild(opt);
+      });
+    }
+
+    // Load data buku
+    async function loadBooks() {
+      table.innerHTML = '';
+      const res = await fetch(`${API_URL}/books`);
+      const data = await res.json();
+
+      data.records.forEach(b => {
+        const category = categories.find(c => c.id == b.category_id)?.category_name || '-';
+        const author = authors.find(a => a.id == b.author_id)?.author_name || '-';
+        const publisher = publishers.find(p => p.id == b.publisher_id)?.publisher_name || '-';
+
+        table.innerHTML += `
+          <tr>
+            <td>${b.id}</td>
+            <td>${b.title}</td>
+            <td>${category}</td>
+            <td>${author}</td>
+            <td>${publisher}</td>
+            <td>${b.year_published}</td>
+            <td>${b.stock}</td>
+            <td class="text-center">
+              <button class="btn btn-warning btn-sm me-1" onclick="editBook(${b.id})">Edit</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteBook(${b.id})">Hapus</button>
+            </td>
+          </tr>`;
+      });
+    }
+
+    // Tambah Buku
+    document.getElementById('btnAdd').addEventListener('click', () => {
+      document.querySelector('.modal-title').textContent = 'Tambah Buku';
+      form.reset();
+      document.getElementById('bookId').value = '';
+    });
+
+    // Simpan Buku (Tambah/Edit)
+    saveBtn.addEventListener('click', async () => {
+      const id = document.getElementById('bookId').value;
+      const payload = {
+        title: form.title.value,
+        category_id: parseInt(form.category_id.value),
+        author_id: parseInt(form.author_id.value),
+        publisher_id: parseInt(form.publisher_id.value),
+        year_published: parseInt(form.year_published.value),
+        stock: parseInt(form.stock.value)
+      };
+
+      if (id) {
+        await fetch(`${API_URL}/books/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        await fetch(`${API_URL}/books`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+      modal.hide();
+      loadBooks();
+    });
+
+    // Edit Buku
+    async function editBook(id) {
+      const res = await fetch(`${API_URL}/books/${id}`);
+      const book = await res.json();
+
+      document.getElementById('bookId').value = book.id;
+      document.getElementById('title').value = book.title;
+      document.getElementById('category_id').value = book.category_id;
+      document.getElementById('author_id').value = book.author_id;
+      document.getElementById('publisher_id').value = book.publisher_id;
+      document.getElementById('year_published').value = book.year_published;
+      document.getElementById('stock').value = book.stock;
+
+      document.querySelector('.modal-title').textContent = 'Edit Buku';
+      modal.show();
+    }
+
+    // Hapus Buku
+    async function deleteBook(id) {
+      if (confirm('Yakin ingin menghapus buku ini?')) {
+        await fetch(`${API_URL}/books/${id}`, { method: 'DELETE' });
+        loadBooks();
+      }
+    }
+
+    // Inisialisasi awal
+    (async () => {
+      await loadDropdowns();
+      await loadBooks();
+    })();
+  </script>
+</body>
+</html>

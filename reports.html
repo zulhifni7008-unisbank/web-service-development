@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Laporan Perpustakaan - Perpustakaan Digital</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background-color: #f8f9fa; }
+    .navbar { border-bottom: 3px solid #0d6efd; }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary px-3">
+    <a class="navbar-brand" href="dashboard.html">📚 Perpustakaan Digital</a>
+    <div class="ms-auto d-flex align-items-center">
+      <span id="user-name" class="text-white me-3"></span>
+      <a href="dashboard.html" class="btn btn-light btn-sm me-2">Dashboard</a>
+      <button class="btn btn-danger btn-sm" id="logoutBtn">Logout</button>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div class="d-flex align-items-center gap-2">
+        <a href="dashboard.html" class="btn btn-outline-secondary">⬅️ Kembali</a>
+        <h3 class="m-0">📊 Laporan Perpustakaan</h3>
+      </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="row mb-4">
+      <div class="col-md-3">
+        <label for="month" class="form-label">Bulan</label>
+        <select id="month" class="form-select">
+          <option value="1">Januari</option><option value="2">Februari</option><option value="3">Maret</option>
+          <option value="4">April</option><option value="5">Mei</option><option value="6">Juni</option>
+          <option value="7">Juli</option><option value="8">Agustus</option><option value="9">September</option>
+          <option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label for="year" class="form-label">Tahun</label>
+        <input type="number" id="year" class="form-control" value="2025">
+      </div>
+      <div class="col-md-3">
+        <label for="time-range" class="form-label">Rentang Waktu</label>
+        <select id="time-range" class="form-select">
+          <option value="monthly">Per Bulan</option>
+          <option value="yearly">Seluruh Tahun</option>
+        </select>
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button class="btn btn-primary w-100" id="filterBtn">Tampilkan</button>
+      </div>
+    </div>
+
+    <!-- Ringkasan -->
+    <div class="row text-center mb-4" id="summary">
+      <div class="col-md-3">
+        <div class="card bg-success text-white">
+          <div class="card-body">
+            <h6>Total Transaksi</h6>
+            <h3 id="total-transaksi">0</h3>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card bg-warning text-white">
+          <div class="card-body">
+            <h6>Buku Dipinjam</h6>
+            <h3 id="total-buku">0</h3>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card bg-danger text-white">
+          <div class="card-body">
+            <h6>Transaksi Terlambat</h6>
+            <h3 id="total-terlambat">0</h3>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card bg-info text-white">
+          <div class="card-body">
+            <h6>Total Denda</h6>
+            <h3 id="total-denda">Rp 0</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grafik -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Grafik Transaksi & Denda</h5>
+        <canvas id="reportChart" height="100"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Cek login
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (!user) window.location.href = 'index.html';
+    document.getElementById('user-name').textContent = user.fullname + ' (' + user.role + ')';
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('user');
+      window.location.href = 'index.html';
+    });
+
+    const API_URL = 'http://localhost/perpustakaan/api.php/records';
+
+    const chartCtx = document.getElementById('reportChart');
+    let reportChart;
+
+    async function loadReport() {
+      const month = document.getElementById('month').value;
+      const year = document.getElementById('year').value;
+      const timeRange = document.getElementById('time-range').value;
+
+      const trxRes = await fetch(`${API_URL}/borrow_transactions`);
+      const allTrx = (await trxRes.json()).records;
+
+      let trxFiltered = allTrx.filter(t => {
+        const d = new Date(t.borrow_date);
+        if (timeRange === 'monthly') {
+          return d.getMonth() + 1 == month && d.getFullYear() == year;
+        } else if (timeRange === 'yearly') {
+          return d.getFullYear() == year;
+        }
+      });
+
+      const trxIds = trxFiltered.map(t => t.id);
+      const totalTransaksi = trxFiltered.length;
+      const terlambat = trxFiltered.filter(t => t.status === 'terlambat').length;
+
+      // Hitung total buku
+      const detailsRes = await fetch(`${API_URL}/borrow_details`);
+      const details = (await detailsRes.json()).records.filter(d => trxIds.includes(d.transaction_id));
+      const totalBuku = details.reduce((sum, d) => sum + d.quantity, 0);
+
+      // Hitung total denda
+      const penaltiesRes = await fetch(`${API_URL}/penalties`);
+      const penalties = (await penaltiesRes.json()).records.filter(p => trxIds.includes(p.transaction_id));
+      const totalDenda = penalties.reduce((sum, p) => sum + Number(p.fine_amount), 0);
+
+      // Update tampilan ringkasan
+      document.getElementById('total-transaksi').textContent = totalTransaksi;
+      document.getElementById('total-terlambat').textContent = terlambat;
+      document.getElementById('total-buku').textContent = totalBuku;
+      document.getElementById('total-denda').textContent = 'Rp ' + totalDenda.toLocaleString('id-ID');
+
+      // Siapkan data untuk chart
+      const chartLabels = timeRange === 'monthly'
+        ? ['Transaksi', 'Buku Dipinjam', 'Terlambat', 'Denda (ribu)']
+        : [`Transaksi Tahun ${year}`, 'Buku Dipinjam', 'Terlambat', 'Denda (ribu)'];
+
+      const chartData = timeRange === 'monthly'
+        ? [totalTransaksi, totalBuku, terlambat, totalDenda / 1000]
+        : [totalTransaksi, totalBuku, terlambat, totalDenda / 1000];
+
+      if (reportChart) reportChart.destroy();
+      reportChart = new Chart(chartCtx, {
+        type: 'bar',
+        data: {
+          labels: chartLabels,
+          datasets: [{
+            label: `Laporan ${timeRange === 'monthly' ? `Bulan ${month}/${year}` : `Tahun ${year}`}`,
+            data: chartData,
+            backgroundColor: ['#198754', '#ffc107', '#dc3545', '#0dcaf0']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: {
+              label: (ctx) => ctx.dataset.label + ': ' + ctx.formattedValue
+            }}
+          },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    document.getElementById('filterBtn').addEventListener('click', loadReport);
+
+    // Tampilkan default bulan ini
+    (function init() {
+      const now = new Date();
+      document.getElementById('month').value = now.getMonth() + 1;
+      document.getElementById('year').value = now.getFullYear();
+      loadReport();
+    })();
+  </script>
+
+</body>
+</html>
